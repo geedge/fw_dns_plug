@@ -447,10 +447,12 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 		if(p_result!=NULL)
 		{
 			state=fw_dns_action(a_stream, dns_info, p_result, a_packet);
-			hit_num=1;
+			fw_dns_send_log(a_stream, dns_info, p_result, 1, thread_seq);
 		}
-
-		fw_dns_send_log(a_stream, dns_info, result, hit_num, thread_seq);
+		else
+		{
+			fw_dns_send_log(a_stream, dns_info, result, hit_num, thread_seq);
+		}
 	}
 
 
