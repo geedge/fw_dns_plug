@@ -14,7 +14,7 @@
 
 
 char *g_fw_dns_conffile=(char *)"tsgconf/main.conf";
-char FW_DNS_PLUG_VERSION_20191206=0;
+char FW_DNS_PLUG_VERSION_20191209=0;
 struct _fw_dns_plug g_fw_dns_plug_info;
 
 enum TSG_ETHOD_TYPE
@@ -288,10 +288,9 @@ static int fw_dns_send_log(struct streaminfo *a_stream, dns_info_t *dns_info, st
 	int i=0;
 	dns_rr_t *rr=NULL;
 	tsg_log_t log_msg;
-	int cname_use_len=0,dns_sec=1;
+	int dns_sec=1;
 	struct TLD_handle_t *handle=NULL;
-	char cname[4096]={0},*rr_buf=NULL;
-	int cname_size=sizeof(cname);
+	char *cname=NULL,*rr_buf=NULL;
 	
 	handle=TLD_create(thread_seq);
 	
@@ -315,21 +314,30 @@ static int fw_dns_send_log(struct streaminfo *a_stream, dns_info_t *dns_info, st
 		TLD_append(handle, (char *)"dns_qclass", (void *)(long)dns_info->query_question.qclass, TLD_TYPE_LONG);
 	}
 
+	cJSON *item=NULL;
+	cJSON *cname_array=cJSON_CreateArray();
 	for(i=0; i<dns_info->rr_count && dns_info->rr != NULL; i++)
 	{
 		rr = &dns_info->rr[i];
 		if(rr!=NULL && rr->type==DNS_TYPE_CNAME)
 		{
-			if(rr->rdata.cname != NULL && cname_size-cname_use_len > (int)strlen((const char *)rr->rdata.cname))
+			if(rr->rdata.cname != NULL)
 			{
-				snprintf(cname+cname_use_len, cname_size-cname_use_len, "%s,", rr->rdata.cname);
-				cname_use_len += strlen((const char *)rr->rdata.cname);
+				item=cJSON_CreateString((const char *)rr->rdata.cname);
+				cJSON_AddItemToArray(cname_array, item);
 			}
 		}
 	}
-	
-	TLD_append(handle, (char *)"dns_cname", (void *)cname, TLD_TYPE_STRING);
 
+	cname=cJSON_PrintUnformatted(cname_array);
+	if(strlen(cname)>0)
+	{
+		TLD_append(handle, (char *)"dns_cname", (void *)cname, TLD_TYPE_STRING);
+		free(cname);
+	}
+	cJSON_Delete(cname_array);
+	cname_array=NULL;
+	
 	cJSON * object=cJSON_CreateObject();
 	get_rr_str2json(object, dns_info, &dns_sec);
 	rr_buf=cJSON_PrintUnformatted(object);
