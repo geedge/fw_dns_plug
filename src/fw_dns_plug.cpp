@@ -11,39 +11,11 @@
 #include "tsg_rule.h"
 #include "tsg_send_log.h"
 #include "fw_dns_plug.h"
-
+#include "tsg_statistic.h"
 
 char *g_fw_dns_conffile=(char *)"tsgconf/main.conf";
-char FW_DNS_PLUG_VERSION_20191209=0;
+char FW_DNS_PLUG_VERSION_20191220=0;
 struct _fw_dns_plug g_fw_dns_plug_info;
-
-enum TSG_ETHOD_TYPE
-{
-	TSG_METHOD_TYPE_UNKNOWN=0,
-	TSG_METHOD_TYPE_DROP,
-	TSG_METHOD_TYPE_REDIRECTION,
-	TSG_METHOD_TYPE_MAX
-};
-
-const struct _str2index method2index[TSG_METHOD_TYPE_MAX]={	{TSG_METHOD_TYPE_UNKNOWN, 7, (char *)"unknown"},
-													{TSG_METHOD_TYPE_DROP, 4, (char *)"drop"},
-													{TSG_METHOD_TYPE_REDIRECTION, 8, (char *)"redirect"}
-	};
-
-int tsg_get_method_id(char *method)
-{
-	int i=0;
-
-	for(i=0; i<TSG_METHOD_TYPE_MAX; i++)
-	{
-		if(method2index[i].len==(int)strlen(method) && (strncasecmp(method2index[i].type, method, method2index[i].len))==0)
-		{
-			return method2index[i].index;
-		}
-	}
-
-	return -1;
-}
 
 static int get_answer_ttl(cJSON *object)
 {
@@ -354,7 +326,7 @@ static int fw_dns_send_log(struct streaminfo *a_stream, dns_info_t *dns_info, st
 	log_msg.result_num=result_num;
 	
 	tsg_send_log(g_tsg_log_instance, handle, &log_msg, thread_seq);
-	
+	tsg_set_policy_flow(a_stream, result, a_stream->threadnum);
 	return 0;
 }
 
