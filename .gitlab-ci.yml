@@ -7,12 +7,10 @@ variables:
   GIT_STRATEGY: "clone"
   IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
 
-
 stages:
   - build
   - package
   - release
-  - docker
   
 .build_before_script:
   before_script:
@@ -90,7 +88,7 @@ fw_dns_plug_release-release:
     - share
   variables:
     ARTIFACTS_JOB: "fw_dns_plug_release"
-    PROJECT_NAME: "fw_dns_plug"
+    PROJECT_NAME: "fw-dns-plug"
     USER_DEFINE: "release"
   only:
     - tags
@@ -104,20 +102,9 @@ fw_dns_plug_debug-release:
     - share
   variables:
     ARTIFACTS_JOB: "fw_dns_plug_debug"
-    PROJECT_NAME: "fw_dns_plug"
-    USER_DEFINE: "release"
+    PROJECT_NAME: "fw-dns-plug"
+    USER_DEFINE: "debug"
   only:
     - tags
   script:
     - /bin/bash -x ./autorelease.sh $CI_API_V4_URL $CI_PROJECT_URL $CI_PROJECT_ID $CI_TOKEN $CI_COMMIT_TAG $ARTIFACTS_JOB $PROJECT_NAME $USER_DEFINE
- 
-build-docker:
-  stage: docker
-  script:
-    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
-    - docker build -t $IMAGE_TAG .
-    - docker push $IMAGE_TAG
-  tags:
-    - share
-  only:
-    - master

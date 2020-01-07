@@ -15,7 +15,7 @@
 fw_dns_rule_t g_fw_dns_rule_info;
 char FW_DNS_RULE_VERSION_20191201=0;
 
-struct _str2index str2index[]={{DNS_TYPE_CNAME,	5, (char *)"CNAME"},
+struct _dns_str2idx str2index[]={{DNS_TYPE_CNAME,	5, (char *)"CNAME"},
 								{DNS_TYPE_MX,	2, (char *)"MX"},
 								{DNS_TYPE_A, 	1, (char *)"A"},
 								{DNS_TYPE_NS,	2, (char *)"NS"},
@@ -28,7 +28,7 @@ int fw_dns_type2index(char *type)
 {
 	int i=0;
 	
-	for(i=0; i<(int)(sizeof(str2index)/sizeof(struct _str2index)); i++)
+	for(i=0; i<(int)(sizeof(str2index)/sizeof(struct _dns_str2idx)); i++)
 	{
 		if(str2index[i].len==(int)strlen(type) && (strncasecmp(str2index[i].type, type, str2index[i].len))==0)
 		{

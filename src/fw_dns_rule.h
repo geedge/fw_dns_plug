@@ -5,7 +5,7 @@
 
 #define	MAX_TABLE_NAME_LEN	32
 
-struct _str2index
+struct _dns_str2idx
 {
 	int index;
 	int len;
