@@ -435,6 +435,11 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 		}
 	}
 
+	if(mid!=NULL)
+	{
+		Maat_clean_status(&mid);
+		mid=NULL;
+	}
 
 	return state;
 }
