@@ -1,110 +1,104 @@
-image: "docker:stable"
-
-services:
-  - docker:dind
-
+image: "git.mesalab.cn:7443/mesa_platform/build-env:master"
 variables:
   GIT_STRATEGY: "clone"
-  IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+  BUILD_PADDING_PREFIX: /tmp/padding_for_CPACK_RPM_BUILD_SOURCE_DIRS_PREFIX_PREFIX_PREFIX_PREFIX_PREFIX_PREFIX/
+  INSTALL_PREFIX: "/home/mesasoft/sapp_run/"
+  INSTALL_DEPENDENCY_LIBRARY: libMESA_handle_logger-devel  libcjson-devel libMESA_field_stat2-devel  sapp-devel framework_env  libMESA_prof_load-devel http-devel dns-devel  ftp-devel mail-devel ssl-devel  librdkafka-devel libmaatframe-devel tsg_master-devel libdocumentanalyze-devel
 
 stages:
-  - build
-  - package
-  - release
-  
-.build_before_script:
+- build
+
+.build_by_travis:
   before_script:
-    - mkdir -p /tmp/padding_for_CPACK_RPM_BUILD_SOURCE_DIRS_PREFIX/$CI_PROJECT_NAMESPACE/
-    - ln -s $CI_PROJECT_DIR /tmp/padding_for_CPACK_RPM_BUILD_SOURCE_DIRS_PREFIX/$CI_PROJECT_PATH
-    - cd /tmp/padding_for_CPACK_RPM_BUILD_SOURCE_DIRS_PREFIX/$CI_PROJECT_PATH
-
-.build_fw_dns_plug:
-  extends: .build_before_script
-  image:  git.mesalab.cn:7443/tango/tsg_master:master
+  - mkdir -p $BUILD_PADDING_PREFIX/$CI_PROJECT_NAMESPACE/
+  - ln -s $CI_PROJECT_DIR $BUILD_PADDING_PREFIX/$CI_PROJECT_PATH
+  - cd $BUILD_PADDING_PREFIX/$CI_PROJECT_PATH
+  - chmod +x ./ci/travis.sh
   script:
-    - source /etc/profile.d/MESA.sh
-    - mkdir -p build
-    - cd build
-    - cmake ..  -DCMAKE_BUILD_TYPE=$BUILD_TYPE
-    - make
-    - make package
-    
-.package_fw_dns_plug:
-    extends: .build_before_script
-    image:  git.mesalab.cn:7443/tango/tsg_master:master
-    script:
-      - source /etc/profile.d/MESA.sh
-      - mkdir -p build
-      - cd build
-      - cmake ..  -DCMAKE_BUILD_TYPE=$BUILD_TYPE
-      - make package
+  - yum makecache
+  - ./ci/travis.sh
+  - cd build
+  tags:
+  - share
 
-build:
+branch_build_debug:
   stage: build
-  extends:   .build_fw_dns_plug
-  tags:
-    - share
+  extends: .build_by_travis
   variables:
-    BUILD_TYPE: "Debug"
-  artifacts:
-    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
-    paths:
-      -  ./build/*.rpm
+    BUILD_TYPE: Debug
   except:
+    - /^develop.*$/i
+    - /^master.*$/i
     - tags
 
-fw_dns_plug_debug:
-  stage: package
-  extends: .package_fw_dns_plug
-  tags:
-    - share
+branch_build_release:
+  stage: build
   variables:
-    BUILD_TYPE: "Debug"
+    BUILD_TYPE: RelWithDebInfo
+  extends: .build_by_travis
+  except:
+    - /^develop.*$/i
+    - /^master.*$/i
+    - tags
+
+develop_build_debug:
+  stage: build
+  extends: .build_by_travis
+  variables:
+    BUILD_TYPE: Debug
+    PACKAGE: 1
   artifacts:
-    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
+    name: "fw_dns_plug-$CI_COMMIT_REF_NAME-debug"
     paths:
-      -  ./build/*.rpm
+      - build/*.rpm
   only:
-    - tags
-   
-fw_dns_plug_release:
-  stage: package
-  extends: .package_fw_dns_plug
-  tags:
-    - share
+    - /^develop.*$/i
+    - /^master.*$/i
+
+develop_build_release:
+  stage: build
+  extends: .build_by_travis
   variables:
-    BUILD_TYPE: "Release"
+    BUILD_TYPE: RelWithDebInfo
+    PACKAGE: 1
   artifacts:
-    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
+    name: "fw_dns_plug-$CI_COMMIT_REF_NAME-release"
     paths:
-      -  ./build/*.rpm
+      - build/*.rpm
   only:
-    - tags
-    
-fw_dns_plug_release-release:
-  stage: release
-  image: git.mesalab.cn:7443/tango/tsg_master:master
-  tags:
-    - share
+    - /^develop.*$/i
+    - /^master.*$/i
+
+
+release_build_release:
+  stage: build
   variables:
-    ARTIFACTS_JOB: "fw_dns_plug_release"
-    PROJECT_NAME: "fw-dns-plug"
-    USER_DEFINE: "release"
+    BUILD_TYPE: RelWithDebInfo
+    PACKAGE: 1
+    UPLOAD: 1
+    PULP3_REPO_NAME: tsg-stable-x86_64.el7
+    PULP3_DIST_NAME: tsg-stable-x86_64.el7
+  extends: .build_by_travis
+  artifacts:
+    name: "fw_dns_plug-$CI_COMMIT_REF_NAME-release"
+    paths:
+      - build/*.rpm
   only:
     - tags
-  script:
-    - /bin/bash -x ./autorelease.sh $CI_API_V4_URL $CI_PROJECT_URL $CI_PROJECT_ID $CI_TOKEN $CI_COMMIT_TAG $ARTIFACTS_JOB $PROJECT_NAME $USER_DEFINE
-    
-fw_dns_plug_debug-release:
-  stage: release
-  image: git.mesalab.cn:7443/tango/tsg_master:master
-  tags:
-    - share
+
+release_build_release_devel:
+  stage: build
   variables:
-    ARTIFACTS_JOB: "fw_dns_plug_debug"
-    PROJECT_NAME: "fw-dns-plug"
-    USER_DEFINE: "debug"
+    BUILD_TYPE: RelWithDebInfo
+    ENABLE_DEVEL_SWITCH: "ON"
+    PACKAGE: 1
+    UPLOAD: 1
+    PULP3_REPO_NAME: tsg-stable-x86_64.el7
+    PULP3_DIST_NAME: tsg-stable-x86_64.el7
+  extends: .build_by_travis
+  artifacts:
+    name: "fw_dns_plug-$CI_COMMIT_REF_NAME-release"
+    paths:
+      - build/*.rpm
   only:
     - tags
-  script:
-    - /bin/bash -x ./autorelease.sh $CI_API_V4_URL $CI_PROJECT_URL $CI_PROJECT_ID $CI_TOKEN $CI_COMMIT_TAG $ARTIFACTS_JOB $PROJECT_NAME $USER_DEFINE

@@ -14,6 +14,6 @@ add_library(fw_dns_plug SHARED ${SRC})
 target_link_libraries(fw_dns_plug ${FW_DNS_PLUG_DEPEND_DYN_LIB})
 set_target_properties(fw_dns_plug  PROPERTIES PREFIX "")
 
-install(TARGETS fw_dns_plug DESTINATION ${CMAKE_INSTALL_PREFIX}/plug/business/fw_dns_plug)
-install(FILES ../bin/fw_dns_plug.inf DESTINATION ${CMAKE_INSTALL_PREFIX}/plug/business/fw_dns_plug)
+install(TARGETS fw_dns_plug LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/plug/business/fw_dns_plug COMPONENT LIBRARY)
+install(FILES ../bin/fw_dns_plug.inf DESTINATION ${CMAKE_INSTALL_PREFIX}/plug/business/fw_dns_plug COMPONENT PROFILE)
 
