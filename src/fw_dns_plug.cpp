@@ -480,7 +480,7 @@ extern "C" int FW_DNS_PLUG_INIT(void)
 }
 
 
-extern "C" void FW_DNS_PLUG_DESTORY(void)
+extern "C" void FW_DNS_PLUG_DESTROY(void)
 {
 	return ;
 }
