@@ -314,6 +314,10 @@ static int fw_dns_send_log(struct streaminfo *a_stream, dns_info_t *dns_info, st
 	get_rr_str2json(object, dns_info, &dns_sec);
 	rr_buf=cJSON_PrintUnformatted(object);
 	TLD_append(handle, (char *)"dns_rr", (void *)rr_buf, TLD_TYPE_STRING);
+	
+	cJSON_Delete(object);
+	object=NULL;
+
 	free(rr_buf);
 	rr_buf=NULL;
 	
@@ -338,10 +342,15 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 	struct Maat_rule_t result[MAX_RESULT_NUM], *p_result=NULL;
 	dns_info_t *dns_info=(dns_info_t *)session_info->app_info;
 
-	if(dns_info==NULL || strlen((char *)dns_info->query_question.qname)==0)
+	if(dns_info==NULL)
+	{
+		return state;
+	}
+	
+	if(strlen((char *)dns_info->query_question.qname)==0)
 	{		
 		MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
-					RLOG_LV_FATAL,
+					RLOG_LV_DEBUG,
 					"DNS_PLUG",
 					"Qname is %s, addr: %s",
 					(dns_info==NULL) ? "NULL" : ((strlen((char *)dns_info->query_question.qname)==0) ? "NULL" : (char *)dns_info->query_question.qname),
