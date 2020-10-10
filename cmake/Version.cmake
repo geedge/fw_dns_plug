@@ -19,6 +19,11 @@ include(${__VERSION_CONFIG})
 string(REGEX REPLACE "^v([0-9]+)\\..*" "\\1" VERSION_MAJOR "${VCS_TAG}")
 string(REGEX REPLACE "^v[0-9]+\\.([0-9]+).*" "\\1" VERSION_MINOR "${VCS_TAG}")
 string(REGEX REPLACE "^v[0-9]+\\.[0-9]+\\.([0-9]+).*" "\\1" VERSION_PATCH "${VCS_TAG}")
+string(REGEX REPLACE "[T\\:\\+\\-]" "" VERSION_DATE "${VCS_DATE}")
+
+if(VERSION_DAILY_BUILD)
+	set(VERSION_PATCH ${VERSION_PATCH}.${VERSION_DATE})
+endif()
 
 if(NOT VERSION_MAJOR)
     set(VERSION_MAJOR 1)
