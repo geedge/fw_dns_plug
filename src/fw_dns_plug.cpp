@@ -9,9 +9,32 @@
 #include <MESA/MESA_handle_logger.h>
 
 #include "tsg_rule.h"
+#include "tsg_label.h"
 #include "tsg_send_log.h"
 #include "fw_dns_plug.h"
 #include "tsg_statistic.h"
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+#define GIT_VERSION_CATTER(v) __attribute__((__used__)) const char * GIT_VERSION_##v = NULL
+#define GIT_VERSION_EXPEND(v) GIT_VERSION_CATTER(v)
+
+/* VERSION TAG */
+#ifdef GIT_VERSION
+GIT_VERSION_EXPEND(GIT_VERSION);
+#else
+static __attribute__((__used__)) const char * GIT_VERSION_UNKNOWN = NULL;
+#endif
+#undef GIT_VERSION_CATTER
+#undef GIT_VERSION_EXPEND
+
+#ifdef __cplusplus
+}
+#endif
+
 
 char *g_fw_dns_conffile=(char *)"tsgconf/main.conf";
 char FW_DNS_PLUG_VERSION_20191220=0;
@@ -89,7 +112,7 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 								p_result->service_defined,
 								(char *)dns_info->query_question.qname,
 								dns_info->query_question.qtype,
-								printaddr(&a_stream->addr, a_stream->threadnum)
+								(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
 								);
 	}
 	else
@@ -108,7 +131,7 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 								tmp_buff,
 								(char *)dns_info->query_question.qname,
 								dns_info->query_question.qtype,
-								printaddr(&a_stream->addr, a_stream->threadnum)
+								(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
 								);
 	}
 
@@ -124,7 +147,7 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 								(tmp_buff==NULL) ? p_result->service_defined : tmp_buff,
 								(char *)dns_info->query_question.qname,
 								dns_info->query_question.qtype,
-								printaddr(&a_stream->addr, a_stream->threadnum)
+								(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
 								);
 
 		if(tmp_buff!=NULL)
@@ -148,6 +171,16 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 			state=PROT_STATE_DROPME|PROT_STATE_DROPPKT;
 			break;
 		case	TSG_METHOD_TYPE_REDIRECTION:
+			if(g_fw_dns_plug_info.mode==0 && dns_info->hdr_info.qr==1) //mirror
+			{
+				break;
+			}
+
+			if(g_fw_dns_plug_info.mode==1 && dns_info->hdr_info.qr==0) //inline or transparent
+			{
+				break;
+			}
+			
 			answer_array=get_answer_records(object, dns_info->query_question.qtype);
 			if(answer_array!=NULL)
 			{
@@ -223,7 +256,7 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 												dns_info->query_question.qtype,
 												p_result->config_id,
 												p_result->service_id,
-												printaddr(&a_stream->addr, a_stream->threadnum)
+												(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
 												);
 				}
 
@@ -241,7 +274,7 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 										(tmp_buff==NULL) ? p_result->service_defined : tmp_buff,
 										(char *)dns_info->query_question.qname,
 										dns_info->query_question.qtype,
-										printaddr(&a_stream->addr, a_stream->threadnum)
+										(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
 									);
 				state=PROT_STATE_GIVEME;
 			}
@@ -336,9 +369,11 @@ static int fw_dns_send_log(struct streaminfo *a_stream, dns_info_t *dns_info, st
 
 extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int thread_seq,struct streaminfo *a_stream,const void *a_packet)
 {
-	int ret=0,hit_num=0;
+	int i=0,ret=0,hit_num=0;
 	scan_status_t mid=NULL;
+	int category_id_num=0;
 	char state=PROT_STATE_GIVEME;
+	unsigned int category_id[MAX_CATEGORY_ID_NUM]={0};
 	struct Maat_rule_t result[MAX_RESULT_NUM], *p_result=NULL;
 	dns_info_t *dns_info=(dns_info_t *)session_info->app_info;
 
@@ -350,12 +385,12 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 	if(strlen((char *)dns_info->query_question.qname)==0)
 	{		
 		MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
-					RLOG_LV_DEBUG,
-					"DNS_PLUG",
-					"Qname is %s, addr: %s",
-					(dns_info==NULL) ? "NULL" : ((strlen((char *)dns_info->query_question.qname)==0) ? "NULL" : (char *)dns_info->query_question.qname),
-					printaddr(&a_stream->addr, thread_seq)
-					);
+									RLOG_LV_DEBUG,
+									"DNS_PLUG",
+									"Qname is %s, addr: %s",
+									(dns_info==NULL) ? "NULL" : ((strlen((char *)dns_info->query_question.qname)==0) ? "NULL" : (char *)dns_info->query_question.qname),
+									(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
+								);
 		return state;
 	}
 	
@@ -363,72 +398,107 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 	if(ret>0)
 	{
 		MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
-								RLOG_LV_DEBUG,
-								"SCAN_NEST_ADDR",
-								"Hit policy_id: %d service: %d action: %d domain: %s qtype: %d addr: %s",								
-								result[hit_num].config_id,
-								result[hit_num].service_id,
-								result[hit_num].action,
-								(char *)dns_info->query_question.qname,
-								dns_info->query_question.qtype,
-								printaddr(&a_stream->addr, thread_seq)
+									RLOG_LV_DEBUG,
+									"SCAN_NEST_ADDR",
+									"Hit policy_id: %d service: %d action: %d domain: %s qtype: %d addr: %s",								
+									result[hit_num].config_id,
+									result[hit_num].service_id,
+									result[hit_num].action,
+									(char *)dns_info->query_question.qname,
+									dns_info->query_question.qtype,
+									(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
 								);
 		hit_num+=ret;
 	}
 	else
 	{
 		MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
-								RLOG_LV_DEBUG,
-								"SCAN_NEST_ADDR",
-								"Scan domain: %s qtype: %d ret: %d addr: %s",
-								(char *)dns_info->query_question.qname,
-								dns_info->query_question.qtype,
-								ret,
-								printaddr(&a_stream->addr, thread_seq)
+									RLOG_LV_DEBUG,
+									"SCAN_NEST_ADDR",
+									"Scan domain: %s qtype: %d ret: %d addr: %s",
+									(char *)dns_info->query_question.qname,
+									dns_info->query_question.qtype,
+									ret,
+									(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
 								);
 								
 	}
-	
+
 	ret=Maat_full_scan_string(g_tsg_maat_feather,
-							g_fw_dns_plug_info.table_qname_id,
-							CHARSET_UTF8,
-							(char *)dns_info->query_question.qname,
-							strlen((char *)dns_info->query_question.qname),
-							result+hit_num, 
-							NULL,
-							MAX_RESULT_NUM-hit_num,
-							&mid,
-							thread_seq);
+									g_fw_dns_plug_info.table_qname_id,
+									CHARSET_UTF8,
+									(char *)dns_info->query_question.qname,
+									strlen((char *)dns_info->query_question.qname),
+									result+hit_num, 
+									NULL,
+									MAX_RESULT_NUM-hit_num,
+									&mid,
+									thread_seq
+								);
 
 	if(ret>0)
 	{
 		MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
-								RLOG_LV_DEBUG,
-								"SCAN_DOMAIN",
-								"Hit domain: %s qtype: %d policy_id: %d service: %d action: %d addr: %s",
-								(char *)dns_info->query_question.qname,
-								dns_info->query_question.qtype,
-								result[hit_num].config_id,
-								result[hit_num].service_id,
-								result[hit_num].action,
-								printaddr(&a_stream->addr, thread_seq)
+									RLOG_LV_DEBUG,
+									"SCAN_DOMAIN",
+									"Hit domain: %s qtype: %d policy_id: %d service: %d action: %d addr: %s",
+									(char *)dns_info->query_question.qname,
+									dns_info->query_question.qtype,
+									result[hit_num].config_id,
+									result[hit_num].service_id,
+									result[hit_num].action,
+									(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
 								);
 		hit_num+=ret;
 	}
 	else
 	{
 		MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
-								RLOG_LV_DEBUG,
-								"SCAN_DOMAIN",
-								"Scan domain: %s qtype: %d ret: %d addr: %s",
-								(char *)dns_info->query_question.qname,
-								dns_info->query_question.qtype,
-								ret,
-								printaddr(&a_stream->addr, thread_seq)
+									RLOG_LV_DEBUG,
+									"SCAN_DOMAIN",
+									"Scan domain: %s qtype: %d ret: %d addr: %s",
+									(char *)dns_info->query_question.qname,
+									dns_info->query_question.qtype,
+									ret,
+									(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
 								);
 								
 	}
 
+	category_id_num=tsg_get_fqdn_category_id(g_tsg_maat_feather, (char *)dns_info->query_question.qname, category_id, MAX_CATEGORY_ID_NUM, g_fw_dns_plug_info.logger, thread_seq);
+	for(i=0; i< category_id_num; i++)
+	{
+		ret=Maat_scan_intval(g_tsg_maat_feather, g_fw_dns_plug_info.table_qname_id, (unsigned int)category_id[i], result+hit_num,MAX_RESULT_NUM-hit_num, &mid, thread_seq);
+		if(ret>0)
+		{
+			MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
+										RLOG_LV_DEBUG,
+										"SCAN_FQDN_CAT_ID",
+										"Hit qname: %s category id: %d policy_id: %d service: %d action: %d addr: %s",
+										(char *)dns_info->query_question.qname,
+										category_id[i],
+										result[hit_num].config_id,
+										result[hit_num].service_id,
+										result[hit_num].action,
+										(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
+									);
+			hit_num+=ret;
+		}
+		else
+		{
+			MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
+										RLOG_LV_DEBUG,
+										"SCAN_DOMAIN",
+										"Scan domain: %s category id: %d ret: %d addr: %s",
+										(char *)dns_info->query_question.qname,
+										category_id[i],
+										ret,
+										(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
+									);
+									
+		}
+	}
+	
 	if(hit_num>0)
 	{
 		p_result=tsg_fetch_deny_rule(result, hit_num);
@@ -436,7 +506,10 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 		if(p_result!=NULL)
 		{
 			state=fw_dns_action(a_stream, dns_info, p_result, a_packet);
-			fw_dns_send_log(a_stream, dns_info, p_result, 1, thread_seq);
+			if(PROT_STATE_GIVEME!=state)
+			{
+				fw_dns_send_log(a_stream, dns_info, p_result, 1, thread_seq);
+			}
 		}
 		else
 		{
@@ -455,20 +528,19 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 
 extern "C" int FW_DNS_PLUG_INIT(void)
 {
-	int level=30,ret=0;
-	char log_path[256]={0};
+	int ret=0,len=0;
 	memset(&g_fw_dns_plug_info, 0, sizeof(g_fw_dns_plug_info));
 
-	MESA_load_profile_int_def(g_fw_dns_conffile, "DNS_PLUG", "LOG_LEVEL", &level, 30);
-	MESA_load_profile_string_def(g_fw_dns_conffile, "DNS_PLUG", "LOG_PATH", log_path, sizeof(log_path), "tsglog/fw_dns_plug/fw_dns_plug");
+	MESA_load_profile_int_def(g_fw_dns_conffile, "DNS_PLUG", "LOG_LEVEL", &g_fw_dns_plug_info.level, RLOG_LV_FATAL);
+	MESA_load_profile_string_def(g_fw_dns_conffile, "DNS_PLUG", "LOG_PATH", g_fw_dns_plug_info.log_path, sizeof(g_fw_dns_plug_info.log_path), "tsglog/fw_dns_plug/fw_dns_plug");
 
 
 	MESA_load_profile_string_def(g_fw_dns_conffile, "DNS_PLUG", "TABLE_QNAME", g_fw_dns_plug_info.table_qname, MAX_TABLE_NAME_LEN, "TSG_FIELD_DNS_QNAME");
 
-	g_fw_dns_plug_info.logger=MESA_create_runtime_log_handle(log_path, level);
+	g_fw_dns_plug_info.logger=MESA_create_runtime_log_handle(g_fw_dns_plug_info.log_path, g_fw_dns_plug_info.level);
 	if(g_fw_dns_plug_info.logger==NULL)
 	{
-		printf("MESA_create_runtime_log_handle failed, log_path: %s level: %d", (log_path==NULL) ? NULL : log_path, level);
+		printf("MESA_create_runtime_log_handle failed, log_path: %s level: %d", (g_fw_dns_plug_info.log_path==NULL) ? NULL : g_fw_dns_plug_info.log_path, g_fw_dns_plug_info.level);
 		return -1;
 	}
 
@@ -483,6 +555,20 @@ extern "C" int FW_DNS_PLUG_INIT(void)
 	if(ret<0)
 	{
 		return -1;
+	}
+
+	len=sizeof(g_fw_dns_plug_info.s_mode);
+	ret=sapp_get_platform_opt(SPO_DEPLOYMENT_MODE_STR, g_fw_dns_plug_info.s_mode, &len);
+	if(ret>=0)
+	{
+		if((memcmp(g_fw_dns_plug_info.s_mode, "mirror", strlen(g_fw_dns_plug_info.s_mode)))==0)
+		{
+			g_fw_dns_plug_info.mode=0;
+		}
+		else
+		{
+			g_fw_dns_plug_info.mode=1;
+		}
 	}
 	
 	return 0;
