@@ -243,8 +243,16 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 					return -1;
 				}
 
-				senddir = MESA_dir_reverse(a_stream->routedir);
+                if(dns_info->hdr_info.qr==0)
+                {
+				    senddir = MESA_dir_reverse(a_stream->routedir);
+                }
+                else
+                {
+                    senddir = a_stream->routedir;
+                }
 				ret=MESA_inject_pkt(a_stream, (const char *)cheat_pkt_payload, payload_len, (const char *)a_packet, senddir);
+                
 				if(ret<0)
 				{
 					MESA_handle_runtime_log(g_fw_dns_plug_info.logger,
