@@ -156,7 +156,7 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 			tmp_buff=NULL;
 		}
 		
-		return PROT_STATE_GIVEME;
+		return PROT_STATE_GIVEME|PROT_STATE_DROPPKT;
 	}
 	
 	item=cJSON_GetObjectItem(object, "method");
@@ -168,7 +168,7 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 	switch(method_type)
 	{
 		case	TSG_METHOD_TYPE_DROP:
-			state=PROT_STATE_DROPME|PROT_STATE_DROPPKT;
+			state=PROT_STATE_GIVEME|PROT_STATE_DROPPKT;
 			break;
 		case	TSG_METHOD_TYPE_REDIRECTION:
 			if(g_fw_dns_plug_info.mode==0 && dns_info->hdr_info.qr==1) //mirror
@@ -268,7 +268,7 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 												);
 				}
 
-				state=PROT_STATE_DROPME|PROT_STATE_DROPPKT;
+				state=PROT_STATE_GIVEME|PROT_STATE_DROPPKT;
 			}
 			else
 			{
@@ -284,7 +284,7 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 										dns_info->query_question.qtype,
 										(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
 									);
-				state=PROT_STATE_GIVEME;
+				state=PROT_STATE_GIVEME|PROT_STATE_DROPPKT;
 			}
 			break;
 		default:
