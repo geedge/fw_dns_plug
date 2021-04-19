@@ -35,6 +35,10 @@ static __attribute__((__used__)) const char * GIT_VERSION_UNKNOWN = NULL;
 }
 #endif
 
+#ifndef	PRINTADDR
+#define	PRINTADDR(a, b)	((b)<RLOG_LV_FATAL ? printaddr(&(a->addr), a->threadnum) : "")
+#endif
+
 
 char *g_fw_dns_conffile=(char *)"tsgconf/main.conf";
 char FW_DNS_PLUG_VERSION_20191220=0;
@@ -112,7 +116,7 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 								p_result->service_defined,
 								(char *)dns_info->query_question.qname,
 								dns_info->query_question.qtype,
-								(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
+								PRINTADDR(a_stream, g_fw_dns_plug_info.level)
 								);
 	}
 	else
@@ -131,7 +135,7 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 								tmp_buff,
 								(char *)dns_info->query_question.qname,
 								dns_info->query_question.qtype,
-								(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
+								PRINTADDR(a_stream, g_fw_dns_plug_info.level)
 								);
 	}
 
@@ -147,7 +151,7 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 								(tmp_buff==NULL) ? p_result->service_defined : tmp_buff,
 								(char *)dns_info->query_question.qname,
 								dns_info->query_question.qtype,
-								(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
+								PRINTADDR(a_stream, g_fw_dns_plug_info.level)
 								);
 
 		if(tmp_buff!=NULL)
@@ -240,6 +244,16 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 				payload_len=build_cheat_pkt(cheat_pkt_payload, MAX_CHEAT_PKT_PAYLOAD_LEN, &dns_info->query_question, cheat_opt, used_num);
 				if(payload_len==-1)
 				{
+					MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
+								RLOG_LV_FATAL,
+								"DO_ACTION",
+								"Hit policy_id: %d service: %d action: %d build_cheat_pkt ret: %d addr: %s",
+								p_result->config_id,
+								p_result->service_id,
+								p_result->action,
+								payload_len,
+								PRINTADDR(a_stream, g_fw_dns_plug_info.level)
+								);
 					return -1;
 				}
 
@@ -252,7 +266,6 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
                     senddir = a_stream->routedir;
                 }
 				ret=MESA_inject_pkt(a_stream, (const char *)cheat_pkt_payload, payload_len, (const char *)a_packet, senddir);
-                
 				if(ret<0)
 				{
 					MESA_handle_runtime_log(g_fw_dns_plug_info.logger,
@@ -264,7 +277,7 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 												dns_info->query_question.qtype,
 												p_result->config_id,
 												p_result->service_id,
-												(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
+												PRINTADDR(a_stream, g_fw_dns_plug_info.level)
 												);
 				}
 
@@ -282,7 +295,7 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 										(tmp_buff==NULL) ? p_result->service_defined : tmp_buff,
 										(char *)dns_info->query_question.qname,
 										dns_info->query_question.qtype,
-										(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
+										PRINTADDR(a_stream, g_fw_dns_plug_info.level)
 									);
 				state=PROT_STATE_GIVEME|PROT_STATE_DROPPKT;
 			}
@@ -343,10 +356,11 @@ static int fw_dns_send_log(struct streaminfo *a_stream, dns_info_t *dns_info, st
 	}
 
 	cname=cJSON_PrintUnformatted(cname_array);
-	if(strlen(cname)>0)
+	if(cname!=NULL && strlen(cname)>0)
 	{
 		TLD_append(handle, (char *)"dns_cname", (void *)cname, TLD_TYPE_STRING);
-		free(cname);
+		cJSON_free(cname);
+		cname=NULL;
 	}
 	cJSON_Delete(cname_array);
 	cname_array=NULL;
@@ -359,7 +373,7 @@ static int fw_dns_send_log(struct streaminfo *a_stream, dns_info_t *dns_info, st
 	cJSON_Delete(object);
 	object=NULL;
 
-	free(rr_buf);
+	cJSON_free(rr_buf);
 	rr_buf=NULL;
 	
 	TLD_append(handle, (char *)"dns_sub", (void *)(long)dns_sec, TLD_TYPE_LONG);
@@ -385,7 +399,7 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 	struct Maat_rule_t result[MAX_RESULT_NUM], *p_result=NULL;
 	dns_info_t *dns_info=(dns_info_t *)session_info->app_info;
 
-	if(dns_info==NULL)
+	if(dns_info==NULL || a_stream==NULL)
 	{
 		return state;
 	}
@@ -397,7 +411,7 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 									"DNS_PLUG",
 									"Qname is %s, addr: %s",
 									(dns_info==NULL) ? "NULL" : ((strlen((char *)dns_info->query_question.qname)==0) ? "NULL" : (char *)dns_info->query_question.qname),
-									(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
+									PRINTADDR(a_stream, g_fw_dns_plug_info.level)
 								);
 		return state;
 	}
@@ -414,7 +428,7 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 									result[hit_num].action,
 									(char *)dns_info->query_question.qname,
 									dns_info->query_question.qtype,
-									(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
+									PRINTADDR(a_stream, g_fw_dns_plug_info.level)
 								);
 		hit_num+=ret;
 	}
@@ -427,7 +441,7 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 									(char *)dns_info->query_question.qname,
 									dns_info->query_question.qtype,
 									ret,
-									(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
+									PRINTADDR(a_stream, g_fw_dns_plug_info.level)
 								);
 								
 	}
@@ -455,7 +469,7 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 									result[hit_num].config_id,
 									result[hit_num].service_id,
 									result[hit_num].action,
-									(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
+									PRINTADDR(a_stream, g_fw_dns_plug_info.level)
 								);
 		hit_num+=ret;
 	}
@@ -468,7 +482,7 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 									(char *)dns_info->query_question.qname,
 									dns_info->query_question.qtype,
 									ret,
-									(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
+									PRINTADDR(a_stream, g_fw_dns_plug_info.level)
 								);
 								
 	}
@@ -488,7 +502,7 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 										result[hit_num].config_id,
 										result[hit_num].service_id,
 										result[hit_num].action,
-										(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
+										PRINTADDR(a_stream, g_fw_dns_plug_info.level)
 									);
 			hit_num+=ret;
 		}
@@ -501,7 +515,7 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 										(char *)dns_info->query_question.qname,
 										category_id[i],
 										ret,
-										(g_fw_dns_plug_info.level<RLOG_LV_FATAL ? printaddr(&a_stream->addr, a_stream->threadnum) : "")
+										PRINTADDR(a_stream, g_fw_dns_plug_info.level)
 									);
 									
 		}
@@ -514,10 +528,7 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 		if(p_result!=NULL)
 		{
 			state=fw_dns_action(a_stream, dns_info, p_result, a_packet);
-			if(PROT_STATE_GIVEME!=state)
-			{
-				fw_dns_send_log(a_stream, dns_info, p_result, 1, thread_seq);
-			}
+			fw_dns_send_log(a_stream, dns_info, p_result, 1, thread_seq);
 		}
 		else
 		{
