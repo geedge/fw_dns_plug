@@ -5,7 +5,7 @@
 
 #define	MAX_ANSWER_RECORDS_NUM	32
 
-struct _fw_dns_plug
+struct fw_dns_plug
 {
 	int mode;
 	int level;

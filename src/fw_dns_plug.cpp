@@ -39,10 +39,9 @@ static __attribute__((__used__)) const char * GIT_VERSION_UNKNOWN = NULL;
 #define	PRINTADDR(a, b)	((b)<RLOG_LV_FATAL ? printaddr(&(a->addr), a->threadnum) : "")
 #endif
 
-
+char FW_DNS_PLUG_VERSION_20210607=0;
+struct fw_dns_plug g_fw_dns_plug_info;
 char *g_fw_dns_conffile=(char *)"tsgconf/main.conf";
-char FW_DNS_PLUG_VERSION_20191220=0;
-struct _fw_dns_plug g_fw_dns_plug_info;
 
 static int get_answer_ttl(cJSON *object)
 {
@@ -50,6 +49,11 @@ static int get_answer_ttl(cJSON *object)
 	int max=0;
 	cJSON *item=NULL;
 
+	if(object==NULL)
+	{
+		return 0;
+	}
+	
 	item=cJSON_GetObjectItem(object, "min");
 	min=item->valueint;
 
@@ -83,62 +87,97 @@ static cJSON * get_answer_records(cJSON *object, int qtype)
 	return NULL;
 }
 
-static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maat_rule_t *p_result, const void *a_packet)
+static int build_answer_records(struct streaminfo *a_stream, dns_info_t *dns_info, cJSON *object, cheat_pkt_opt_t *cheat_opt, int cheat_opt_num)
 {
+	int ttl=0;
 	int record_id=0;
 	int i=0,used_num=0;
-	int answer_size=0,ret=0;
-	int payload_len=0,ttl=0;
+	int answer_size=0;	
+	cJSON *one_record=NULL;
+	cJSON *a_item=NULL;	
+	cJSON *answer_array=NULL;
+	int answer_type=DNS_TYPE_UNKNOWN;
+
+	answer_array=get_answer_records(object, dns_info->query_question.qtype);
+	if(answer_array!=NULL)
+	{
+		memset(cheat_opt, 0, sizeof(cheat_pkt_opt_t)*cheat_opt_num);
+		answer_size=cJSON_GetArraySize(answer_array);
+		for(i=0; i<answer_size; i++)
+		{
+			one_record=cJSON_GetArrayItem(answer_array, i);
+			a_item=cJSON_GetObjectItem(one_record, "atype");
+			if(a_item==NULL)
+			{
+				continue;
+			}
+			
+			answer_type=fw_dns_type2index(a_item->valuestring);
+			a_item=cJSON_GetObjectItem(one_record, "ttl");
+			ttl=get_answer_ttl(a_item);
+				
+			a_item=cJSON_GetObjectItem(one_record, "value");
+			if(a_item!=NULL)
+			{
+				cheat_opt[used_num].res_type=answer_type;
+				cheat_opt[used_num].cfg_type=answer_type;
+				cheat_opt[used_num].ttl=ttl;
+
+				switch(answer_type)
+				{
+					case	DNS_TYPE_A:
+						cheat_opt[used_num].res_len=sizeof(unsigned int);
+						inet_pton(AF_INET, a_item->valuestring, (void *)cheat_opt[used_num].res_info);
+						break;
+					case	DNS_TYPE_AAAA:
+						cheat_opt[used_num].res_len=IPV6_ADDR_LEN;
+						inet_pton(AF_INET6, a_item->valuestring, (void *)cheat_opt[used_num].res_info);
+						break;
+				case	DNS_TYPE_NS:
+				case	DNS_TYPE_TXT:
+				case	DNS_TYPE_PTR:
+					case	DNS_TYPE_CNAME:
+						cheat_opt[used_num].res_len=(strlen(a_item->valuestring) > sizeof(cheat_opt[used_num].res_info)-1) ? sizeof(cheat_opt[used_num].res_info)-1 : strlen(a_item->valuestring);
+						memcpy(cheat_opt[used_num].res_info, a_item->valuestring, cheat_opt[used_num].res_len);
+						break;
+					default:
+						continue;
+				}
+				used_num++;
+			}
+			else
+			{
+				a_item=cJSON_GetObjectItem(one_record, "record_id");
+				record_id=a_item->valueint;
+
+				a_item=cJSON_GetObjectItem(one_record, "selected_num");
+				used_num+=dns_get_cheat_opt(record_id, a_item->valueint, ttl, answer_type, cheat_opt+used_num, cheat_opt_num-used_num);
+			}
+		}
+	}
+
+	return used_num;
+}
+
+static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maat_rule_t *p_result, const void *a_packet)
+{
+	int ret=0;
+	int payload_len=0;
+	int answer_records_num=0;
 	dns_hdr_t *dns_hdr = NULL;
 	cJSON *item=NULL;
-	cJSON *a_item=NULL;
 	cJSON *object=NULL;
-	cJSON *answer_array=NULL;
 	char *tmp_buff=NULL;
 	unsigned char senddir=0;
 	char state=PROT_STATE_GIVEME;
-	int answer_type=DNS_TYPE_UNKNOWN;
 	int method_type=TSG_METHOD_TYPE_UNKNOWN;
 	cheat_pkt_opt_t cheat_opt[MAX_ANSWER_RECORDS_NUM];
 	unsigned char cheat_pkt_payload[MAX_CHEAT_PKT_PAYLOAD_LEN];
 	
-	if(p_result->serv_def_len<128)
-	{
-		object=cJSON_Parse(p_result->service_defined);
-
-		MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
-								RLOG_LV_DEBUG,
-								"DO_ACTION",
-								"Hit policy_id: %d service: %d action: %d user_reagion: %s domain: %s qtype: %d addr: %s",
-								p_result->config_id,
-								p_result->service_id,
-								p_result->action,
-								p_result->service_defined,
-								(char *)dns_info->query_question.qname,
-								dns_info->query_question.qtype,
-								PRINTADDR(a_stream, g_fw_dns_plug_info.level)
-								);
-	}
-	else
-	{
-		tmp_buff=(char *)calloc(1, p_result->serv_def_len+1);
-		Maat_read_rule(g_tsg_maat_feather, p_result, MAAT_RULE_SERV_DEFINE, tmp_buff, p_result->serv_def_len);
-		object=cJSON_Parse(tmp_buff);
-
-		MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
-								RLOG_LV_DEBUG,
-								"DO_ACTION",
-								"Hit policy_id: %d service: %d action: %d user_reagion: %s domain: %s qtype: %d addr: %s",
-								p_result->config_id,
-								p_result->service_id,
-								p_result->action,
-								tmp_buff,
-								(char *)dns_info->query_question.qname,
-								dns_info->query_question.qtype,
-								PRINTADDR(a_stream, g_fw_dns_plug_info.level)
-								);
-	}
-
+	tmp_buff=(char *)calloc(1, p_result->serv_def_len+1);
+	Maat_read_rule(g_tsg_maat_feather, p_result, MAAT_RULE_SERV_DEFINE, tmp_buff, p_result->serv_def_len);
+	
+	object=cJSON_Parse(tmp_buff);
 	if(object==NULL)
 	{
 		MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
@@ -153,20 +192,15 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 								dns_info->query_question.qtype,
 								PRINTADDR(a_stream, g_fw_dns_plug_info.level)
 								);
-
-		if(tmp_buff!=NULL)
-		{
-			free(tmp_buff);
-			tmp_buff=NULL;
-		}
-		
-		return PROT_STATE_GIVEME|PROT_STATE_DROPPKT;
+		method_type=TSG_METHOD_TYPE_DROP;
 	}
-	
-	item=cJSON_GetObjectItem(object, "method");
-	if(item!=NULL)
+	else
 	{
-		method_type=tsg_get_method_id(item->valuestring);
+		item=cJSON_GetObjectItem(object, "method");
+		if(item!=NULL)
+		{
+			method_type=tsg_get_method_id(item->valuestring);
+		}
 	}
 	
 	switch(method_type)
@@ -185,110 +219,13 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 				break;
 			}
 			
-			answer_array=get_answer_records(object, dns_info->query_question.qtype);
-			if(answer_array!=NULL)
-			{
-				memset(cheat_opt, 0, sizeof(cheat_opt));
-				answer_size=cJSON_GetArraySize(answer_array);
-				for(i=0; i<answer_size; i++)
-				{
-					item=cJSON_GetArrayItem(answer_array, i);
-					a_item=cJSON_GetObjectItem(item, "atype");
-					answer_type=fw_dns_type2index(a_item->valuestring);
-
-					a_item=cJSON_GetObjectItem(item, "ttl");
-					ttl=get_answer_ttl(a_item);
-						
-					a_item=cJSON_GetObjectItem(item, "value");
-					if(a_item!=NULL)
-					{
-						cheat_opt[used_num].res_type=answer_type;
-						cheat_opt[used_num].cfg_type=answer_type;
-						cheat_opt[used_num].ttl=ttl;
-
-						switch(answer_type)
-						{
-							case	DNS_TYPE_A:
-								cheat_opt[used_num].res_len=sizeof(unsigned int);
-								inet_pton(AF_INET, a_item->valuestring, (void *)cheat_opt[used_num].res_info);
-								break;
-							case	DNS_TYPE_AAAA:
-								cheat_opt[used_num].res_len=IPV6_ADDR_LEN;
-								inet_pton(AF_INET6, a_item->valuestring, (void *)cheat_opt[used_num].res_info);
-								break;
-							default:
-								cheat_opt[used_num].res_len=(strlen(a_item->valuestring) > sizeof(cheat_opt[used_num].res_info)-1) ? sizeof(cheat_opt[used_num].res_info)-1 : strlen(a_item->valuestring);
-								memcpy(cheat_opt[used_num].res_info, a_item->valuestring, cheat_opt[used_num].res_len);
-								break;
-						}
-						used_num++;
-					}
-					else
-					{
-						a_item=cJSON_GetObjectItem(object, "record_id");
-						record_id=a_item->valueint;
-
-						a_item=cJSON_GetObjectItem(object, "selected_num");
-						used_num+=get_cheat_opt(record_id, a_item->valueint, ttl, answer_type, cheat_opt+used_num, MAX_ANSWER_RECORDS_NUM-used_num);
-					}
-					
-				}
-
-				memset(cheat_pkt_payload, 0, MAX_CHEAT_PKT_PAYLOAD_LEN);
-
-				dns_hdr = (dns_hdr_t *)cheat_pkt_payload;
-				dns_hdr->id = dns_info->hdr_info.id;
-				dns_hdr->qdcount = 1;
-				dns_hdr->ancount = used_num;
-				
-				payload_len=build_cheat_pkt(cheat_pkt_payload, MAX_CHEAT_PKT_PAYLOAD_LEN, &dns_info->query_question, cheat_opt, used_num);
-				if(payload_len==-1)
-				{
-					MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
-								RLOG_LV_FATAL,
-								"DO_ACTION",
-								"Hit policy_id: %d service: %d action: %d build_cheat_pkt ret: %d addr: %s",
-								p_result->config_id,
-								p_result->service_id,
-								p_result->action,
-								payload_len,
-								PRINTADDR(a_stream, g_fw_dns_plug_info.level)
-								);
-					return -1;
-				}
-
-                if(dns_info->hdr_info.qr==0)
-                {
-				    senddir = MESA_dir_reverse(a_stream->routedir);
-                }
-                else
-                {
-                    senddir = a_stream->routedir;
-                }
-				ret=MESA_inject_pkt(a_stream, (const char *)cheat_pkt_payload, payload_len, (const char *)a_packet, senddir);
-				if(ret<0)
-				{
-					MESA_handle_runtime_log(g_fw_dns_plug_info.logger,
-												RLOG_LV_FATAL,
-												"SEND_CHEAT_PKT",
-												"Return of MESA_inject_pkt_feedback function is %d, qname: %s qtype: %d cfg_id: %d service: %d addr: %s",
-												ret,
-												dns_info->query_question.qname,
-												dns_info->query_question.qtype,
-												p_result->config_id,
-												p_result->service_id,
-												PRINTADDR(a_stream, g_fw_dns_plug_info.level)
-												);
-				}
-
-				state=PROT_STATE_GIVEME|PROT_STATE_DROPPKT;
-			}
-			else
+			answer_records_num=build_answer_records(a_stream, dns_info, object, cheat_opt, MAX_ANSWER_RECORDS_NUM);
+			if(answer_records_num<=0)
 			{
 				MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
 										RLOG_LV_FATAL,
 										"DO_ACTION",
-										"Hit policy_id: %d service: %d action: %d user_reagion: %s domain: %s qtype: %d addr: %s",
+										"Hit policy_id: %d service: %d action: %d user_region: %s domain: %s qtype: %d addr: %s",
 										p_result->config_id,
 										p_result->service_id,
 										p_result->action,
@@ -298,14 +235,72 @@ static char fw_dns_action(struct streaminfo *a_stream, dns_info_t *dns_info, Maa
 										PRINTADDR(a_stream, g_fw_dns_plug_info.level)
 									);
 				state=PROT_STATE_GIVEME|PROT_STATE_DROPPKT;
+				break;
 			}
+			
+			memset(cheat_pkt_payload, 0, MAX_CHEAT_PKT_PAYLOAD_LEN);
+			dns_hdr = (dns_hdr_t *)cheat_pkt_payload;
+			dns_hdr->id = dns_info->hdr_info.id;
+			dns_hdr->qdcount = 1;
+			dns_hdr->ancount = answer_records_num;
+			
+			payload_len=build_cheat_pkt(cheat_pkt_payload, MAX_CHEAT_PKT_PAYLOAD_LEN, &dns_info->query_question, cheat_opt, answer_records_num);
+			if(payload_len==-1)
+			{
+				MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
+							RLOG_LV_FATAL,
+							"DO_ACTION",
+							"Hit policy_id: %d service: %d action: %d build_cheat_pkt ret: %d addr: %s",
+							p_result->config_id,
+							p_result->service_id,
+							p_result->action,
+							payload_len,
+							PRINTADDR(a_stream, g_fw_dns_plug_info.level)
+							);
+				break;
+			}
+
+            if(dns_info->hdr_info.qr==0)
+            {
+			    senddir = MESA_dir_reverse(a_stream->routedir);
+            }
+            else
+            {
+                senddir = a_stream->routedir;
+            }
+			ret=MESA_inject_pkt(a_stream, (const char *)cheat_pkt_payload, payload_len, (const char *)a_packet, senddir);
+			if(ret<0)
+			{
+				MESA_handle_runtime_log(g_fw_dns_plug_info.logger,
+											RLOG_LV_FATAL,
+											"SEND_CHEAT_PKT",
+											"Return of MESA_inject_pkt_feedback function is %d, qname: %s qtype: %d cfg_id: %d service: %d addr: %s",
+											ret,
+											dns_info->query_question.qname,
+											dns_info->query_question.qtype,
+											p_result->config_id,
+											p_result->service_id,
+											PRINTADDR(a_stream, g_fw_dns_plug_info.level)
+											);
+			}
+			state=PROT_STATE_GIVEME|PROT_STATE_DROPPKT;
 			break;
 		default:
 			break;
 	}
+
+	if(object!=NULL)
+	{
+		cJSON_Delete(object);
+		object=NULL;
+	}
 	
-	cJSON_Delete(object);
-	object=NULL;
+	if(tmp_buff!=NULL)
+	{
+		free(tmp_buff);
+		tmp_buff=NULL;
+	}
+	
 	return state;
 }
 
@@ -580,7 +575,7 @@ extern "C" int FW_DNS_PLUG_INIT(void)
 	ret=sapp_get_platform_opt(SPO_DEPLOYMENT_MODE_STR, g_fw_dns_plug_info.s_mode, &len);
 	if(ret>=0)
 	{
-		if((memcmp(g_fw_dns_plug_info.s_mode, "mirror", strlen(g_fw_dns_plug_info.s_mode)))==0)
+		if((memcmp(g_fw_dns_plug_info.s_mode, "mirror", strlen(g_fw_dns_plug_info.s_mode)))==0 || (memcmp(g_fw_dns_plug_info.s_mode, "dumpfile", strlen(g_fw_dns_plug_info.s_mode)))==0)
 		{
 			g_fw_dns_plug_info.mode=0;
 		}
