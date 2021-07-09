@@ -230,7 +230,7 @@ int fw_dns_rule_init(const char *conffile, void *logger)
 	long arg=0;
 	memset(&g_fw_dns_rule_info, 0, sizeof(g_fw_dns_rule_info));
 	
-	MESA_load_profile_string_def(conffile, "DNS_PLUG", "TABLE_RECORDS", g_fw_dns_rule_info.table_records_name, MAX_TABLE_NAME_LEN, (char *)"FW_PROFILE_DNS_RECORDS");
+	MESA_load_profile_string_def(conffile, "DNS_PLUG", "TABLE_RECORDS", g_fw_dns_rule_info.table_records_name, MAX_TABLE_NAME_LEN, (char *)"TSG_PROFILE_DNS_RECORDS");
 
 	g_fw_dns_rule_info.table_records_id=Maat_table_register(g_tsg_maat_feather, g_fw_dns_rule_info.table_records_name);
 	if(g_fw_dns_rule_info.table_records_id<0)
