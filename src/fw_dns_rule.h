@@ -32,8 +32,8 @@ struct dns_records
 	int record_num;
 	int is_valid;
 	int table_id;
-	char record_type[128];
-	char record_name[MAX_TABLE_NAME_LEN];
+	char record_type[129];
+	char record_name[129];
 	void **record_values;
 };
 
