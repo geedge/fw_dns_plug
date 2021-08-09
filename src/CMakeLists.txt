@@ -2,9 +2,8 @@ cmake_minimum_required(VERSION 2.8)
 
 add_definitions(-fPIC)
 
-set(SRC fw_dns_plug.cpp fw_dns_rule.cpp) 
+set(SRC fw_dns_plug.cpp) 
 
-include_directories(${CMAKE_SOURCE_DIR}/src)
 include_directories(/opt/MESA/include/)
 include_directories(/opt/MESA/include/tsg/)
 
