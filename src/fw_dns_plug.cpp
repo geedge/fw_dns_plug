@@ -130,7 +130,7 @@ static int fw_dns_send_log(struct streaminfo *a_stream, dns_info_t *dns_info, st
 
 extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int thread_seq,struct streaminfo *a_stream,const void *a_packet)
 {
-	int i=0,ret=0,hit_num=0;
+	int ret=0,hit_num=0;
 	scan_status_t mid=NULL;
 	int category_id_num=0;
 	char state=PROT_STATE_GIVEME;
@@ -227,39 +227,8 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 	}
 
 	category_id_num=tsg_get_fqdn_category_id(g_tsg_maat_feather, (char *)dns_info->query_question.qname, category_id, MAX_CATEGORY_ID_NUM, g_fw_dns_plug_info.logger, thread_seq);
-	for(i=0; i< category_id_num; i++)
-	{
-		ret=Maat_scan_intval(g_tsg_maat_feather, g_fw_dns_plug_info.table_qname_id, (unsigned int)category_id[i], result+hit_num,MAX_RESULT_NUM-hit_num, &mid, thread_seq);
-		if(ret>0)
-		{
-			MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
-										RLOG_LV_DEBUG,
-										"SCAN_FQDN_CAT_ID",
-										"Hit qname: %s category id: %d policy_id: %d service: %d action: %d addr: %s",
-										(char *)dns_info->query_question.qname,
-										category_id[i],
-										result[hit_num].config_id,
-										result[hit_num].service_id,
-										result[hit_num].action,
-										PRINTADDR(a_stream, g_fw_dns_plug_info.level)
-									);
-			hit_num+=ret;
-		}
-		else
-		{
-			MESA_handle_runtime_log(g_fw_dns_plug_info.logger, 
-										RLOG_LV_DEBUG,
-										"SCAN_DOMAIN",
-										"Scan domain: %s category id: %d ret: %d addr: %s",
-										(char *)dns_info->query_question.qname,
-										category_id[i],
-										ret,
-										PRINTADDR(a_stream, g_fw_dns_plug_info.level)
-									);
-									
-		}
-	}
-	
+	tsg_set_fqdn_category_id(a_stream, category_id, category_id_num, thread_seq);
+	hit_num+=tsg_scan_fqdn_category_id(g_tsg_maat_feather, a_stream, result+hit_num,MAX_RESULT_NUM-hit_num, &mid, g_fw_dns_plug_info.table_qname_id, category_id, category_id_num, thread_seq);
 	if(hit_num>0)
 	{
 		p_result=tsg_fetch_deny_rule(result, hit_num);
