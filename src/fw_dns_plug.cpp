@@ -242,8 +242,8 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 		}
 		else
 		{
-			fw_dns_send_log(a_stream, dns_info, result, hit_num, thread_seq);
 			tsg_notify_hited_monitor_result(a_stream, result, hit_num, thread_seq);
+			fw_dns_send_log(a_stream, dns_info, result, hit_num, thread_seq);
 		}
 	}
 
