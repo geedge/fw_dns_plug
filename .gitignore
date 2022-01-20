@@ -1,0 +1,17 @@
+SI/
+*.log
+*.o
+*.so
+*.si4project/
+*.a
+*.d
+build/
+.vscode
+.idea
+core.*
+cmake-build-*
+GPATH
+GTAGS
+GRTAGS
+src/tags
+version.txt
