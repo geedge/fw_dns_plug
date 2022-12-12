@@ -50,7 +50,7 @@ char *g_fw_dns_conffile=(char *)"tsgconf/main.conf";
 
 static int fw_dns_send_log(struct streaminfo *a_stream, dns_info_t *dns_info, struct Maat_rule_t *result, int result_num, int thread_seq)
 {
-	int i=0;
+	int i=0,cname_flag=0;
 	dns_rr_t *rr=NULL;
 	tsg_log_t log_msg;
 	int dns_sec=1;
@@ -90,33 +90,41 @@ static int fw_dns_send_log(struct streaminfo *a_stream, dns_info_t *dns_info, st
 			{
 				item=cJSON_CreateString((const char *)rr->rdata.cname);
 				cJSON_AddItemToArray(cname_array, item);
+				cname_flag=1;
 			}
 		}
 	}
 
-	cname=cJSON_PrintUnformatted(cname_array);
-	if(cname!=NULL && strlen(cname)>0)
+	if(cname_flag==1)
 	{
-		TLD_append(handle, (char *)"dns_cname", (void *)cname, TLD_TYPE_STRING);
-		cJSON_free(cname);
-		cname=NULL;
+		cname=cJSON_PrintUnformatted(cname_array);
+		if(cname!=NULL)
+		{
+			TLD_append(handle, (char *)"dns_cname", (void *)cname, TLD_TYPE_STRING);
+			cJSON_free(cname);
+			cname=NULL;
+		}
 	}
+
 	cJSON_Delete(cname_array);
 	cname_array=NULL;
-	
-	cJSON * object=cJSON_CreateObject();
-	get_rr_str2json(object, dns_info, &dns_sec);
-	rr_buf=cJSON_PrintUnformatted(object);
-	TLD_append(handle, (char *)"dns_rr", (void *)rr_buf, TLD_TYPE_STRING);
-	
-	cJSON_Delete(object);
-	object=NULL;
 
-	cJSON_free(rr_buf);
-	rr_buf=NULL;
+	if(dns_info->rr_count>0)
+	{
+		cJSON * object=cJSON_CreateObject();
+		get_rr_str2json(object, dns_info, &dns_sec);
+		rr_buf=cJSON_PrintUnformatted(object);
+		if(rr_buf!=NULL)
+		{
+			TLD_append(handle, (char *)"dns_rr", (void *)rr_buf, TLD_TYPE_STRING);
+			cJSON_free(rr_buf);
+			rr_buf=NULL;
+		}
+		cJSON_Delete(object);
+		object=NULL;		
+	}
 	
 	TLD_append(handle, (char *)"dns_sub", (void *)(long)dns_sec, TLD_TYPE_LONG);
-
 	TLD_append(handle, (char *)"common_schema_type", (void *)"DNS", TLD_TYPE_STRING);
 
 	log_msg.a_stream=a_stream;
