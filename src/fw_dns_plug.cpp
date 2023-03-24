@@ -136,6 +136,22 @@ static int fw_dns_send_log(struct streaminfo *a_stream, dns_info_t *dns_info, st
 	return 0;
 }
 
+int fw_dns_select_monitor_result(struct streaminfo *a_stream, dns_info_t *dns_info, struct Maat_rule_t *result, int result_num, int thread_seq)
+{
+	for(int i=0; i<result_num; i++)
+	{
+		if(result[i].action!=TSG_ACTION_MONITOR)
+		{
+			continue;
+		}
+		
+		tsg_notify_hited_monitor_result(a_stream, &(result[i]), 1, thread_seq);
+		fw_dns_send_log(a_stream, dns_info, &(result[i]), 1, thread_seq);
+	}
+
+	return 0;
+}
+
 extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int thread_seq,struct streaminfo *a_stream,const void *a_packet)
 {
 	int ret=0,hit_num=0;
@@ -239,19 +255,32 @@ extern "C" char FW_DNS_PLUG_ENTRY(stSessionInfo* session_info,  void **pme, int 
 	hit_num+=tsg_scan_fqdn_category_id(g_tsg_maat_feather, a_stream, result+hit_num,MAX_RESULT_NUM-hit_num, &mid, g_fw_dns_plug_info.table_qname_id, category_id, category_id_num, thread_seq);
 	if(hit_num>0)
 	{
-		p_result=tsg_fetch_deny_rule(result, hit_num);
-		if(p_result!=NULL)
+		p_result=tsg_policy_decision_criteria(result, hit_num);
+		switch(p_result->action)
 		{
-			state=tsg_deal_deny_action(a_stream, p_result, PROTO_DNS, ACTION_RETURN_TYPE_PROT, (const void *)dns_info);
-			if(state!=PROT_STATE_GIVEME)
-			{
+			case	TSG_ACTION_BYPASS:
 				fw_dns_send_log(a_stream, dns_info, p_result, 1, thread_seq);
-			}
-		}
-		else
-		{
-			tsg_notify_hited_monitor_result(a_stream, result, hit_num, thread_seq);
-			fw_dns_send_log(a_stream, dns_info, result, hit_num, thread_seq);
+				break;
+			case	TSG_ACTION_DENY:
+				ret=tsg_is_do_deny_action_by_enforce_direction(a_stream, p_result);
+				if(ret==0)
+				{
+					fw_dns_select_monitor_result(a_stream, dns_info, result, hit_num, thread_seq);
+					break;
+				}
+				
+				state=tsg_deal_deny_action(a_stream, p_result, PROTO_DNS, ACTION_RETURN_TYPE_PROT, (const void *)dns_info);
+				if(state!=PROT_STATE_GIVEME)
+				{
+					fw_dns_send_log(a_stream, dns_info, p_result, 1, thread_seq);
+				}
+				break;
+			case	TSG_ACTION_MONITOR:
+				tsg_notify_hited_monitor_result(a_stream, result, hit_num, thread_seq);
+				fw_dns_send_log(a_stream, dns_info, result, hit_num, thread_seq);
+				break;
+			default:
+				break;
 		}
 	}
 
